@@ -1,0 +1,4 @@
+{
+    "command": "pytest",
+    "working_directory": "/home/kavia/workspace/code-generation/product-management-dashboard-56956-56957/inventory_tracker_backend"
+}

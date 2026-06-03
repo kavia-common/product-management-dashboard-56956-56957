@@ -45,7 +45,15 @@ _broker = SseBroker()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Integration step may tighten this
+    # Allow common dev origins explicitly; keep wildcard as a safe fallback for preview environments.
+    # NOTE: SSE (EventSource) relies on CORS; allowing the frontend origin prevents opaque failures.
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

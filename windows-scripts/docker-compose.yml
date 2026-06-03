@@ -1,7 +1,10 @@
 services:
   db:
     build:
-      context: ../product-management-dashboard-56956-56958/inventory_tracker_db
+      # NOTE: build.context is resolved relative to THIS compose file's directory.
+      # This compose file lives under product-management-dashboard-56956-56957/windows-scripts,
+      # so we need to go up two levels to reach the repo root.
+      context: ../../product-management-dashboard-56956-56958/inventory_tracker_db
     container_name: inventory_tracker_db
     restart: unless-stopped
     environment:
@@ -21,7 +24,7 @@ services:
 
   backend:
     build:
-      context: ../product-management-dashboard-56956-56957/inventory_tracker_backend
+      context: ../../product-management-dashboard-56956-56957/inventory_tracker_backend
     container_name: inventory_tracker_backend
     restart: unless-stopped
     depends_on:
@@ -38,7 +41,7 @@ services:
 
   frontend:
     build:
-      context: ../product-management-dashboard-56956-56959/inventory_tracker_frontend
+      context: ../../product-management-dashboard-56956-56959/inventory_tracker_frontend
     container_name: inventory_tracker_frontend
     restart: unless-stopped
     depends_on:

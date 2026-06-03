@@ -45,14 +45,17 @@ _broker = SseBroker()
 
 app.add_middleware(
     CORSMiddleware,
-    # Allow common dev origins explicitly; keep wildcard as a safe fallback for preview environments.
-    # NOTE: SSE (EventSource) relies on CORS; allowing the frontend origin prevents opaque failures.
+    # Allow common dev origins explicitly.
+    #
+    # IMPORTANT:
+    # - When allow_credentials=True, using "*" for allow_origins is invalid per CORS rules and
+    #   Starlette will not emit the expected CORS headers. This breaks browser requests.
+    # - Explicit origins ensure the frontend (localhost dev servers) can call the API and use SSE.
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "*",
     ],
     allow_credentials=True,
     allow_methods=["*"],

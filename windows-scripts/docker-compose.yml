@@ -1,0 +1,54 @@
+services:
+  db:
+    build:
+      context: ../product-management-dashboard-56956-56958/inventory_tracker_db
+    container_name: inventory_tracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # Keep preview/local convention from db_connection.txt (host 5001 -> container 5432)
+      - "5001:5432"
+    volumes:
+      - inventory_tracker_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../product-management-dashboard-56956-56957/inventory_tracker_backend
+    container_name: inventory_tracker_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Use service name "db" (compose DNS) rather than 127.0.0.1
+      # Backend code will coerce to postgresql+asyncpg automatically.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      # Optional: help frameworks/proxies in some environments
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ../product-management-dashboard-56956-56959/inventory_tracker_frontend
+    container_name: inventory_tracker_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Vite env vars must be present at build time; we pass them here for the image build context
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_LIVE_UPDATES_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+
+volumes:
+  inventory_tracker_pgdata:

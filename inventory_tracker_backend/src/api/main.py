@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -43,6 +43,13 @@ app = FastAPI(
 # In-memory broker used for SSE broadcasts.
 _broker = SseBroker()
 
+_ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+}
+
 app.add_middleware(
     CORSMiddleware,
     # Allow common dev origins explicitly.
@@ -51,16 +58,54 @@ app.add_middleware(
     # - When allow_credentials=True, using "*" for allow_origins is invalid per CORS rules and
     #   Starlette will not emit the expected CORS headers. This breaks browser requests.
     # - Explicit origins ensure the frontend (localhost dev servers) can call the API and use SSE.
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=list(_ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def ensure_cors_headers(request: Request, call_next):
+    """
+    Ensure CORS headers are present on *all* responses, including unhandled 500s.
+
+    Starlette's CORSMiddleware should handle this, but if an exception occurs before
+    it can attach headers (or during app startup edge-cases), browsers will surface it
+    as a CORS failure. This middleware is a defensive layer for localhost dev.
+    """
+    origin = request.headers.get("origin")
+    origin_allowed = origin in _ALLOWED_ORIGINS if origin else False
+
+    # Defensive preflight handling (so mis-ordered middleware can't break OPTIONS).
+    if request.method == "OPTIONS" and origin_allowed:
+        resp = Response(status_code=204)
+        resp.headers["Access-Control-Allow-Origin"] = origin  # echo back origin when credentials are used
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Methods"] = request.headers.get(
+            "access-control-request-method", "GET,POST,PUT,DELETE,OPTIONS"
+        )
+        resp.headers["Access-Control-Allow-Headers"] = request.headers.get(
+            "access-control-request-headers", "*"
+        )
+        return resp
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Return a JSON 500 while still attaching CORS headers so the frontend can read it.
+        response = Response(
+            content='{"detail":"Internal Server Error"}',
+            status_code=500,
+            media_type="application/json",
+        )
+
+    if origin_allowed:
+        response.headers.setdefault("Access-Control-Allow-Origin", origin)
+        response.headers.setdefault("Vary", "Origin")
+        response.headers.setdefault("Access-Control-Allow-Credentials", "true")
+    return response
 
 
 @app.get("/", tags=["Health"], summary="Health check")

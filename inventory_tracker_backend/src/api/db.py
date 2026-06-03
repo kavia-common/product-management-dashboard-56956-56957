@@ -1,7 +1,7 @@
 import os
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 
 def _coerce_postgres_url_to_async(url: str) -> str:
@@ -46,13 +46,35 @@ def get_database_url() -> str:
     return _coerce_postgres_url_to_async(url)
 
 
-_engine = create_async_engine(get_database_url(), pool_pre_ping=True)
-AsyncSessionLocal = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
+_engine: Optional[AsyncEngine] = None
+AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
+
+
+def _ensure_engine() -> async_sessionmaker[AsyncSession]:
+    """
+    Lazily create the SQLAlchemy engine/sessionmaker.
+
+    Why lazy?
+    - In local dev it's common to start the API before wiring env vars.
+    - If we raise during module import, the ASGI app may never boot, and browsers will
+      report missing CORS headers / network errors (because no FastAPI response exists).
+    """
+    global _engine, AsyncSessionLocal
+    if AsyncSessionLocal is not None:
+        return AsyncSessionLocal
+
+    # This may raise RuntimeError if env vars are missing; that error will now happen
+    # inside a request (or other runtime callsite), allowing FastAPI/CORS to respond.
+    url = get_database_url()
+    _engine = create_async_engine(url, pool_pre_ping=True)
+    AsyncSessionLocal = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
+    return AsyncSessionLocal
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that yields an AsyncSession.
     """
-    async with AsyncSessionLocal() as session:
+    sessionmaker = _ensure_engine()
+    async with sessionmaker() as session:
         yield session
